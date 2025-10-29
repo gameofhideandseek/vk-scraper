@@ -1,12 +1,11 @@
 import express from 'express';
-import puppeteer, { executablePath } from 'puppeteer';
+import puppeteer from 'puppeteer';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const REMIXSID = process.env.REMIXSID || null;
+const API_TOKEN = process.env.API_TOKEN || null;
 
-// Переменные окружения
-const REMIXSID = process.env.REMIXSID || null;   // cookie для авторизации VK
-const API_TOKEN = process.env.API_TOKEN || null; // защита эндпоинта
 let browser;
 
 // === Безопасность: ограничим доступ к эндпоинту токеном ===
@@ -30,7 +29,8 @@ function extractId(input) {
 async function ensureBrowser() {
   if (!browser) {
     const execPath =
-      process.env.PUPPETEER_EXECUTABLE_PATH || executablePath();
+      process.env.PUPPETEER_EXECUTABLE_PATH ||
+      '/opt/render/.cache/puppeteer/chrome/linux-127.0.6533.88/chrome-linux64/chrome';
 
     console.log('🔍 Puppeteer executable path:', execPath);
 
@@ -49,6 +49,10 @@ async function ensureBrowser() {
   }
   return browser;
 }
+
+// для проверки
+app.get('/', (_, res) => res.send('OK ✅'));
+app.get('/health', (_, res) => res.json({ ok: true, ts: Date.now() }));
 
 // === Главный эндпоинт ===
 app.get('/views', async (req, res) => {
