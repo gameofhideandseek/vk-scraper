@@ -1,14 +1,17 @@
 import express from 'express';
-import puppeteer from 'puppeteer';
+import chromium from '@sparticuz/chromium';
+import puppeteer from 'puppeteer-core';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const REMIXSID = process.env.REMIXSID || null;
-const API_TOKEN = process.env.API_TOKEN || null;
+
+// Секреты
+const REMIXSID = process.env.REMIXSID || null;   // кука VK
+const API_TOKEN = process.env.API_TOKEN || null; // токен доступа к /views
 
 let browser;
 
-// === Безопасность: ограничим доступ к эндпоинту токеном ===
+// защита по токену
 app.use((req, res, next) => {
   if (API_TOKEN && req.path === '/views') {
     if (req.query.token !== API_TOKEN) {
@@ -18,43 +21,31 @@ app.use((req, res, next) => {
   next();
 });
 
-// === Вспомогательные функции ===
+// health (проверка)
+app.get('/', (_, res) => res.send('OK'));
+app.get('/health', (_, res) => res.json({ ok: true, ts: Date.now() }));
+
+// достаем video-ид из ссылки
 function extractId(input) {
   if (!input) return null;
-  const s = String(input);
-  const m = s.match(/video(-?\d+)_(\d+)/i);
+  const m = String(input).match(/video(-?\d+)_(\d+)/i);
   return m ? { owner: m[1], id: m[2], full: `${m[1]}_${m[2]}` } : null;
 }
 
+// запускаем Chromium от @sparticuz (он уже «встроенный»)
 async function ensureBrowser() {
   if (!browser) {
-    const execPath =
-      process.env.PUPPETEER_EXECUTABLE_PATH ||
-      '/opt/render/.cache/puppeteer/chrome/linux-127.0.6533.88/chrome-linux64/chrome';
-
-    console.log('🔍 Puppeteer executable path:', execPath);
-
+    const execPath = await chromium.executablePath();
     browser = await puppeteer.launch({
-      headless: true,
+      headless: chromium.headless,
       executablePath: execPath,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-zygote',
-        '--single-process'
-      ]
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox']
     });
   }
   return browser;
 }
 
-// для проверки
-app.get('/', (_, res) => res.send('OK ✅'));
-app.get('/health', (_, res) => res.json({ ok: true, ts: Date.now() }));
 
-// === Главный эндпоинт ===
 app.get('/views', async (req, res) => {
   const raw = req.query.url;
   const vid = extractId(raw);
@@ -64,7 +55,7 @@ app.get('/views', async (req, res) => {
     await ensureBrowser();
     const page = await browser.newPage();
 
-    // Авторизация, если есть remixsid
+    // кука VK (если нужна авторизация)
     if (REMIXSID) {
       await page.setCookie(
         { name: 'remixsid', value: REMIXSID, domain: '.vk.com', httpOnly: true, secure: true },
@@ -72,16 +63,16 @@ app.get('/views', async (req, res) => {
       );
     }
 
+    // немного маскируемся под обычный браузер
     await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36'
     );
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'ru-RU,ru;q=0.9' });
 
-    // Заходим на vk.com, чтобы кука применялась
+    // идем на vk.com, чтобы сессия закрепилась
     await page.goto('https://vk.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Прямой вызов внутреннего API VK
+    // главный способ: вызвать внутренний API al_video.php из самой страницы
     const payload = `act=show&al=1&video=${encodeURIComponent(vid.full)}`;
     const respText = await page.evaluate(async (body) => {
       try {
@@ -103,7 +94,7 @@ app.get('/views', async (req, res) => {
       }
     }, payload);
 
-    // Извлекаем views_count из ответа
+    // пытаемся достать просмотры из ответа al_video.php
     let views = null;
     if (respText && !respText.startsWith('FETCH_ERR::')) {
       let m = respText.match(/views_count["']?\s*[:=]\s*["']?(\d+)/i);
@@ -112,13 +103,12 @@ app.get('/views', async (req, res) => {
       if (m) views = Number(m[1]);
     }
 
-    // Если прямой запрос не сработал — fallback по DOM
+    // запасной вариант: пробуем выдернуть из DOM/HTML
     if (views == null) {
       const deskUrl = `https://vk.com/video${vid.owner}_${vid.id}`;
       await page.goto(deskUrl, { waitUntil: 'networkidle2', timeout: 45000 });
       const txt = await page.evaluate(() => document.body?.innerText || '');
-      const t = txt.replace(/\u00A0/g, ' ');
-      const m = t.match(/([\d\s]+)\s*просмотр/iu);
+      const m = txt.replace(/\u00A0/g, ' ').match(/([\d\s]+)\s*просмотр/iu);
       if (m) views = Number(m[1].replace(/[^\d]/g, ''));
       if (!views) {
         const html = await page.content();
@@ -135,9 +125,9 @@ app.get('/views', async (req, res) => {
       return res.status(404).json({ error: 'views not found', id: vid.full });
     }
   } catch (e) {
-    console.error('❌ VK Scraper error:', e);
+    console.error('Scraper error:', e);
     return res.status(500).json({ error: String(e) });
   }
 });
 
-app.listen(PORT, () => console.log(`✅ VK scraper running on port ${PORT}`));
+app.listen(PORT, () => console.log(`VK scraper running on ${PORT}`));
