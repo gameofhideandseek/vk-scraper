@@ -1,0 +1,17 @@
+{
+  "name": "vk-scraper",
+  "version": "1.0.0",
+  "description": "Headless VK video views scraper using Puppeteer and Express",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "puppeteer": "^22.0.0"
+  }
+}
+
+
+
