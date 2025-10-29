@@ -1,5 +1,6 @@
 import express from 'express';
 import puppeteer from 'puppeteer';
+import puppeteer, { executablePath } from 'puppeteer';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,7 +10,17 @@ const PORT = process.env.PORT || 3000;
 // Windows: set REMIXSID=xxx && npm start
 const REMIXSID = '1_VOYgCUTzjGiG898EG1MmUQ-EJUepMnPVPOCB4-3pqjdNslKbnthPe4DYlZCRy_9070_7MSSek3dL_PZebWmD4Q';
 
-let browser;
+async function ensureBrowser() {
+  if (!browser) {
+    const execPath = process.env.PUPPETEER_EXECUTABLE_PATH || executablePath();
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath: execPath,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+  }
+  return browser;
+}
 
 function extractId(input) {
   if (!input) return null;
