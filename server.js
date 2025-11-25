@@ -116,7 +116,7 @@ app.get('/views', async (req, res) => {
       }
     }
 
-    // запасной вариант: пробуем выдернуть из DOM/HTML
+    // запасной вариант: пробуем выдернуть из DOM/HTML/
     if (views == null) {
       const deskUrl = `https://vk.com/video${vid.owner}_${vid.id}`;
       await page.goto(deskUrl, { waitUntil: 'networkidle2', timeout: 45000 });
