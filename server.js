@@ -145,13 +145,25 @@ app.get('/views', async (req, res) => {
       console.log('Не нашли строку "videoModalInfoData" в ответе');
     }
 
-    // Если не нашли, пробуем fallback
+    // ----------- ИЩЕМ ПО HTML-разметке -----------
     if (views == null) {
       console.log('Fallback-парсинг...');
-      const fallbackMatch = respText.match(/"views"\s*:\s*(\d{1,15})/);
-      if (fallbackMatch) {
-        views = Number(fallbackMatch[1]);
+      const htmlMatch = respText.match(/"views"\s*:\s*(\d{1,15})/);
+      if (htmlMatch) {
+        views = Number(htmlMatch[1]);
         console.log('Fallback нашёл views:', views);
+      }
+    }
+
+    // ----------- ИЩЕМ В HTML-элементах ----------- 
+    if (views == null) {
+      console.log('Поиск через HTML разметку');
+      const txt = respText.replace(/\u00A0/g, ' ').replace(/\s+/g, ' '); // очищаем лишние пробелы и неразрывные пробелы
+      const viewsMatch = txt.match(/"group_link"[^>]*>[^<]+<\/a>,\s*\d{10},\s*(\d{1,15})/);
+      if (viewsMatch) {
+        views = Number(viewsMatch[1]);
+        console.log('Извлечены просмотры через HTML:', views);
+        console.log('Найдено в HTML:', viewsMatch[0]); // логируем найденный фрагмент HTML
       }
     }
 
