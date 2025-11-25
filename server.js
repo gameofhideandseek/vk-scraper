@@ -93,7 +93,12 @@ app.get('/views', async (req, res) => {
           },
           body
         });
-        return await r.text();
+        const text = await r.text();
+        
+        // Принудительно декодируем текст в UTF-8, если ответ не в правильной кодировке
+        const decoder = new TextDecoder('utf-8');
+        const decodedResponse = decoder.decode(new TextEncoder().encode(text));
+        return decodedResponse;
       } catch (e) {
         return 'FETCH_ERR::' + String(e);
       }
