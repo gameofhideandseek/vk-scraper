@@ -115,9 +115,12 @@ app.get('/views', async (req, res) => {
       if (dataMatch) {
         try {
           videoModalInfoData = JSON.parse(dataMatch[1]);
+          console.log('videoModalInfoData:', videoModalInfoData); // Логируем данные объекта videoModalInfoData
         } catch (error) {
           console.error('Ошибка при парсинге JSON:', error);
         }
+      } else {
+        console.error('Не удалось найти videoModalInfoData в ответе');
       }
     }
 
