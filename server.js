@@ -45,6 +45,22 @@ async function ensureBrowser() {
   return browser;
 }
 
+// Функция для извлечения просмотров из HTML страницы
+async function getViewsFromHtml(page, videoId) {
+  const videoUrl = `https://vk.com/video${videoId}`;
+  
+  // Переходим на страницу видео
+  await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 45000 });
+
+  // Извлекаем количество просмотров из HTML
+  const views = await page.evaluate(() => {
+    // Ищем элемент, который содержит количество просмотров
+    const viewsElement = document.querySelector('.views_count');
+    return viewsElement ? parseInt(viewsElement.textContent.replace(/\D/g, ''), 10) : null;
+  });
+
+  return views;
+}
 
 app.get('/views', async (req, res) => {
   const raw = req.query.url;
@@ -72,55 +88,13 @@ app.get('/views', async (req, res) => {
     // идем на vk.com, чтобы сессия закрепилась
     await page.goto('https://vk.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // главный способ: вызвать внутренний API al_video.php из самой страницы
-    const payload = `act=show&al=1&video=${encodeURIComponent(vid.full)}`;
-    const respText = await page.evaluate(async (body) => {
-      try {
-        const r = await fetch('https://vk.com/al_video.php', {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': '*/*',
-            'Origin': 'https://vk.com',
-            'Referer': 'https://vk.com/'
-          },
-          body
-        });
-        return await r.text();
-      } catch (e) {
-        return 'FETCH_ERR::' + String(e);
-      }
-    }, payload);
-
-    // пытаемся достать просмотры из ответа al_video.php
-    let views = null;
-    if (respText && !respText.startsWith('FETCH_ERR::')) {
-      let m = respText.match(/views_count["']?\s*[:=]\s*["']?(\d+)/i);
-      if (!m) m = respText.match(/"views"\s*:\s*\{\s*"count"\s*:\s*(\d{1,15})/);
-      if (!m) m = respText.match(/"views"\s*:\s*(\d{1,15})/);
-      if (m) views = Number(m[1]);
-    }
-
-    // запасной вариант: пробуем выдернуть из DOM/HTML
-    if (views == null) {
-      const deskUrl = `https://vk.com/video${vid.owner}_${vid.id}`;
-      await page.goto(deskUrl, { waitUntil: 'networkidle2', timeout: 45000 });
-      const txt = await page.evaluate(() => document.body?.innerText || '');
-      const m = txt.replace(/\u00A0/g, ' ').match(/([\d\s]+)\s*просмотр/iu);
-      if (m) views = Number(m[1].replace(/[^\d]/g, ''));
-      if (!views) {
-        const html = await page.content();
-        const j = html.match(/"viewsCount"\s*:\s*(\d{1,15})/);
-        if (j) views = Number(j[1]);
-      }
-    }
+    // Получаем количество просмотров из HTML страницы
+    const views = await getViewsFromHtml(page, vid.full);
 
     await page.close();
 
-    if (Number.isFinite(views)) {
-      return res.json({ views, source: 'al_video.php|dom' });
+    if (views !== null && Number.isFinite(views)) {
+      return res.json({ views, source: 'HTML' });
     } else {
       return res.status(404).json({ error: 'views not found', id: vid.full });
     }
