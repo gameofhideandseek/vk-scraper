@@ -21,6 +21,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// Устанавливаем кодировку UTF-8 для всех ответов
+app.use((req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8'); // Устанавливаем кодировку
+  next();
+});
+
 // health (проверка)
 app.get('/', (_, res) => res.send('OK'));
 app.get('/health', (_, res) => res.json({ ok: true, ts: Date.now() }));
@@ -44,7 +50,6 @@ async function ensureBrowser() {
   }
   return browser;
 }
-
 
 app.get('/views', async (req, res) => {
   const raw = req.query.url;
@@ -94,8 +99,8 @@ app.get('/views', async (req, res) => {
       }
     }, payload);
 
-     // Логируем ответ от al_video.php для отладки
-    console.log("Ответ от al_video.php:", respText);  // Логируем полный ответ
+    // логируем ответ от al_video.php для отладки
+    console.log("Ответ от al_video.php:", respText);
 
     // пытаемся достать просмотры из ответа al_video.php
     let views = null;
