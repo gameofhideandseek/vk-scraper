@@ -116,19 +116,7 @@ app.get('/views', async (req, res) => {
       }
     }
 
-    // запасной вариант: пробуем выдернуть из DOM/HTML/
-    if (views == null) {
-      const deskUrl = `https://vk.com/video${vid.owner}_${vid.id}`;
-      await page.goto(deskUrl, { waitUntil: 'networkidle2', timeout: 45000 });
-      const txt = await page.evaluate(() => document.body?.innerText || '');
-      const m = txt.replace(/\u00A0/g, ' ').match(/([\d\s]+)\s*просмотр/iu);
-      if (m) views = Number(m[1].replace(/[^\d]/g, ''));
-      if (!views) {
-        const html = await page.content();
-        const j = html.match(/"viewsCount"\s*:\s*(\d{1,15})/);
-        if (j) views = Number(j[1]);
-      }
-    }
+
 
     await page.close();
 
