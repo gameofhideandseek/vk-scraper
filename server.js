@@ -1,6 +1,7 @@
 import express from 'express';
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
+import iconv from 'iconv-lite';  // Подключаем iconv-lite для обработки кодировок
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -100,11 +101,14 @@ app.get('/views', async (req, res) => {
       }
     }, payload);
 
+    // Декодируем текст с использованием iconv-lite, чтобы избежать ошибок при парсинге
+    let decodedRespText = iconv.decode(Buffer.from(respText, 'utf-8'), 'utf-8');
+
     // Теперь ищем объект "videoModalInfoData"
     let videoModalInfoData = null;
-    if (respText && !respText.startsWith('FETCH_ERR::')) {
+    if (decodedRespText && !decodedRespText.startsWith('FETCH_ERR::')) {
       // Находим JSON-строку с объектом videoModalInfoData
-      const m = respText.match(/"videoModalInfoData":\s*({[^}]*})/);
+      const m = decodedRespText.match(/"videoModalInfoData":\s*({[^}]*})/);
       if (m) {
         let videoModalInfoDataText = m[1];
         
