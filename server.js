@@ -107,33 +107,42 @@ app.get('/views', async (req, res) => {
     // логируем ответ от al_video.php для отладки
     console.log("Ответ от al_video.php:", respText);
 
-    // пытаемся достать просмотры из ответа al_video.php
-    let views = null;
+    // извлекаем объект videoModalInfoData из текста
+    let videoModalInfoData = null;
     if (respText && !respText.startsWith('FETCH_ERR::')) {
-      let m = respText.match(/"videoModalInfoData":\s*{[^}]*"views"\s*:\s*\{[^}]*"count"\s*:\s*(\d+)/i);
-      if (!m) m = respText.match(/"views"\s*:\s*\{\s*"count"\s*:\s*(\d{1,15})/);
-      if (!m) m = respText.match(/"views"\s*:\s*(\d{1,15})/);
-      if (m) views = Number(m[1]);
+      // Ищем объект videoModalInfoData
+      const dataMatch = respText.match(/videoModalInfoData\s*=\s*(\{.*?\});/s);
+      if (dataMatch) {
+        try {
+          videoModalInfoData = JSON.parse(dataMatch[1]);
+        } catch (error) {
+          console.error('Ошибка при парсинге JSON:', error);
+        }
+      }
     }
 
-    // запасной вариант: пробуем выдернуть из DOM/HTML
+    // если нашли videoModalInfoData, проверяем на наличие данных views
+    let views = null;
+    if (videoModalInfoData && videoModalInfoData.views) {
+      views = videoModalInfoData.views;
+    }
+
+    // если views не найдено, проверяем другие источники, такие как short_video_other_videos
     if (views == null) {
-      const deskUrl = `https://vk.com/video${vid.owner}_${vid.id}`;
-      await page.goto(deskUrl, { waitUntil: 'networkidle2', timeout: 45000 });
-      const txt = await page.evaluate(() => document.body?.innerText || '');
-      const m = txt.replace(/\u00A0/g, ' ').match(/([\d\s]+)\s*просмотр/iu);
-      if (m) views = Number(m[1].replace(/[^\d]/g, ''));
-      if (!views) {
-        const html = await page.content();
-        const j = html.match(/"viewsCount"\s*:\s*(\d{1,15})/);
-        if (j) views = Number(j[1]);
+      const otherVideos = videoModalInfoData?.short_video_other_videos;
+      if (otherVideos) {
+        // ищем нужное видео среди других видео в плейлисте
+        const video = otherVideos.find((v) => v.id === vid.id);
+        if (video) {
+          views = video.views;
+        }
       }
     }
 
     await page.close();
 
     if (Number.isFinite(views)) {
-      return res.json({ views, source: 'al_video.php|dom' });
+      return res.json({ views, source: 'videoModalInfoData' });
     } else {
       return res.status(404).json({ error: 'views not found', id: vid.full });
     }
