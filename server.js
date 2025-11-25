@@ -57,7 +57,6 @@ function extractObjectFromText(text, startIdx) {
     else if (ch === '}') {
       depth--;
       if (depth === 0) {
-        // i — позиция закрывающей скобки
         return text.slice(startBrace, i + 1);
       }
     }
@@ -123,16 +122,20 @@ app.get('/views', async (req, res) => {
     // ----------- ИЩЕМ videoModalInfoData -----------
     let views = null;
 
-    // Найдем всю строку, связанную с videoModalInfoData
-    const idx = respText.indexOf('"videoModalInfoData"');
-    if (idx !== -1) {
-      const objText = extractObjectFromText(respText, idx);
-      if (objText) {
-        console.log('videoModalInfoData (фрагмент):', objText.slice(0, 500)); // логи для отладки
+    // Логируем часть ответа
+    console.log('Ответ от al_video.php:', respText.slice(0, 500)); // показываем только часть для анализа
 
-        const m = objText.match(/"views"\s*:\s*(\d{1,15})/);
-        if (m) {
-          views = Number(m[1]);
+    // Пробуем найти весь объект videoModalInfoData
+    const videoDataStartIdx = respText.indexOf('"videoModalInfoData"');
+    if (videoDataStartIdx !== -1) {
+      const objText = extractObjectFromText(respText, videoDataStartIdx);
+      if (objText) {
+        console.log('videoModalInfoData (фрагмент):', objText.slice(0, 500)); // логируем часть объекта
+
+        // Ищем views в videoModalInfoData
+        const viewsMatch = objText.match(/"views"\s*:\s*(\d{1,15})/);
+        if (viewsMatch) {
+          views = Number(viewsMatch[1]);
           console.log('Найден views в videoModalInfoData:', views);
         }
       } else {
@@ -142,7 +145,7 @@ app.get('/views', async (req, res) => {
       console.log('Не нашли строку "videoModalInfoData" в ответе');
     }
 
-    // Если ничего не нашли — попробуем fallback
+    // Если не нашли, пробуем fallback
     if (views == null) {
       console.log('Fallback-парсинг...');
       const fallbackMatch = respText.match(/"views"\s*:\s*(\d{1,15})/);
