@@ -120,37 +120,34 @@ app.get('/views', async (req, res) => {
       return res.status(500).json({ error: 'fetch al_video.php failed' });
     }
 
-    // ----------- ИЩЕМ ИМЕННО videoModalInfoData -----------
+    // ----------- ИЩЕМ videoModalInfoData -----------
     let views = null;
 
+    // Найдем всю строку, связанную с videoModalInfoData
     const idx = respText.indexOf('"videoModalInfoData"');
     if (idx !== -1) {
       const objText = extractObjectFromText(respText, idx);
       if (objText) {
-        // Для отладки логируем только маленький кусочек
-        console.log('videoModalInfoData (фрагмент):', objText.slice(0, 500));
+        console.log('videoModalInfoData (фрагмент):', objText.slice(0, 500)); // логи для отладки
 
         const m = objText.match(/"views"\s*:\s*(\d{1,15})/);
         if (m) {
           views = Number(m[1]);
           console.log('Найден views в videoModalInfoData:', views);
-        } else {
-          console.log('Внутри videoModalInfoData не найдено поля "views"');
         }
       } else {
-        console.log('Не удалось вырезать объект videoModalInfoData фигурными скобками');
+        console.log('Не удалось вырезать объект videoModalInfoData');
       }
     } else {
-      console.log('Строка "videoModalInfoData" не найдена в ответе al_video.php');
+      console.log('Не нашли строку "videoModalInfoData" в ответе');
     }
 
-    // (опционально) запасной вариант — вообще отключим, если хочешь
-    // чтобы брать ТОЛЬКО из videoModalInfoData, просто не добавляй этот fallback
+    // Если ничего не нашли — попробуем fallback
     if (views == null) {
-      console.log('Пробуем fallback-парсинг views по всему тексту (может попасться чужой объект!)');
-      const m = respText.match(/"videoModalInfoData"\s*:\s*\{[^}]*"views"\s*:\s*(\d{1,15})/);
-      if (m) {
-        views = Number(m[1]);
+      console.log('Fallback-парсинг...');
+      const fallbackMatch = respText.match(/"views"\s*:\s*(\d{1,15})/);
+      if (fallbackMatch) {
+        views = Number(fallbackMatch[1]);
         console.log('Fallback нашёл views:', views);
       }
     }
