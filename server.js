@@ -118,6 +118,7 @@ app.get('/views', async (req, res) => {
           console.log('videoModalInfoData:', videoModalInfoData); // Логируем содержимое videoModalInfoData
         } catch (e) {
           console.error('Ошибка при парсинге JSON:', e);
+          console.log('Текст, который не удалось распарсить:', videoModalInfoDataText); // Логируем проблемный текст
         }
       }
     }
