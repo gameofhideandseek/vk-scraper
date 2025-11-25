@@ -103,10 +103,22 @@ app.get('/views', async (req, res) => {
     // Теперь ищем объект "videoModalInfoData"
     let videoModalInfoData = null;
     if (respText && !respText.startsWith('FETCH_ERR::')) {
+      // Находим JSON-строку с объектом videoModalInfoData
       const m = respText.match(/"videoModalInfoData":\s*({[^}]*})/);
       if (m) {
-        videoModalInfoData = JSON.parse(m[1]); // Преобразуем строку в объект
-        console.log('videoModalInfoData:', videoModalInfoData); // Логируем содержимое videoModalInfoData
+        let videoModalInfoDataText = m[1];
+        
+        // Очищаем текст от лишних символов, чтобы избежать ошибок при парсинге
+        videoModalInfoDataText = videoModalInfoDataText.replace(/\u200B/g, ''); // Убираем невидимые символы
+        videoModalInfoDataText = videoModalInfoDataText.replace(/[\n\r\t]+/g, ''); // Убираем лишние пробелы и символы
+
+        try {
+          // Преобразуем строку в объект
+          videoModalInfoData = JSON.parse(videoModalInfoDataText);
+          console.log('videoModalInfoData:', videoModalInfoData); // Логируем содержимое videoModalInfoData
+        } catch (e) {
+          console.error('Ошибка при парсинге JSON:', e);
+        }
       }
     }
 
