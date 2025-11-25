@@ -107,13 +107,13 @@ app.get('/views', async (req, res) => {
     // логируем ответ от al_video.php для отладки
     console.log("Ответ от al_video.php:", respText);
 
-    // пытаемся достать просмотры из ответа al_video.php
+    // пытаемся достать просмотры из объекта videoModalInfoData
     let views = null;
     if (respText && !respText.startsWith('FETCH_ERR::')) {
-      let m = respText.match(/views_count["']?\s*[:=]\s*["']?(\d+)/i);
-      if (!m) m = respText.match(/"views"\s*:\s*\{\s*"count"\s*:\s*(\d{1,15})/);
-      if (!m) m = respText.match(/"views"\s*:\s*(\d{1,15})/);
-      if (m) views = Number(m[1]);
+      const videoDataMatch = respText.match(/"videoModalInfoData":\s*{[^}]*"views"\s*:\s*\{[^}]*"count"\s*:\s*(\d+)/);
+      if (videoDataMatch) {
+        views = Number(videoDataMatch[1]);
+      }
     }
 
     // запасной вариант: пробуем выдернуть из DOM/HTML
@@ -133,7 +133,7 @@ app.get('/views', async (req, res) => {
     await page.close();
 
     if (Number.isFinite(views)) {
-      return res.json({ views, source: 'al_video.php|dom' });
+      return res.json({ views, source: 'videoModalInfoData|dom' });
     } else {
       return res.status(404).json({ error: 'views not found', id: vid.full });
     }
