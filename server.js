@@ -110,10 +110,10 @@ app.get('/views', async (req, res) => {
     // пытаемся достать просмотры из ответа al_video.php
     let views = null;
     if (respText && !respText.startsWith('FETCH_ERR::')) {
-      let m = respText.match(/video_clips_views_count["']?\s*[:=]\s*["']?(\d+)/i);
-      if (!m) m = respText.match(/"video_clips_views_count"\s*:\s*\{\s*"count"\s*:\s*(\d{1,15})/);
-      if (!m) m = respText.match(/"video_clips_views_count"\s*:\s*(\d{1,15})/);
-      if (m) video_clips_views_count = Number(m[1]);
+      let m = respText.match(/views_count["']?\s*[:=]\s*["']?(\d+)/i);
+      if (!m) m = respText.match(/"views"\s*:\s*\{\s*"count"\s*:\s*(\d{1,15})/);
+      if (!m) m = respText.match(/"views"\s*:\s*(\d{1,15})/);
+      if (m) views = Number(m[1]);
     }
 
     // запасной вариант: пробуем выдернуть из DOM/HTML
