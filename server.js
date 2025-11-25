@@ -1,7 +1,6 @@
 import express from 'express';
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
-import iconv from 'iconv-lite';  // Подключаем iconv-lite для обработки кодировок
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,12 +18,6 @@ app.use((req, res, next) => {
       return res.status(403).json({ error: 'forbidden' });
     }
   }
-  next();
-});
-
-// Устанавливаем кодировку UTF-8 для всех ответов
-app.use((req, res, next) => {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8'); // Устанавливаем кодировку
   next();
 });
 
@@ -52,6 +45,26 @@ async function ensureBrowser() {
   return browser;
 }
 
+// вспомогательная функция: вырезать объект { ... } начиная с позиции startIdx
+function extractObjectFromText(text, startIdx) {
+  const startBrace = text.indexOf('{', startIdx);
+  if (startBrace === -1) return null;
+
+  let depth = 0;
+  for (let i = startBrace; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        // i — позиция закрывающей скобки
+        return text.slice(startBrace, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
 app.get('/views', async (req, res) => {
   const raw = req.query.url;
   const vid = extractId(raw);
@@ -69,7 +82,7 @@ app.get('/views', async (req, res) => {
       );
     }
 
-    // немного маскируемся под обычный браузер
+    // маскируемся под обычный браузер
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36'
     );
@@ -78,7 +91,7 @@ app.get('/views', async (req, res) => {
     // идем на vk.com, чтобы сессия закрепилась
     await page.goto('https://vk.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // главный способ: вызвать внутренний API al_video.php из самой страницы
+    // вызываем внутренний API al_video.php из самой страницы
     const payload = `act=show&al=1&video=${encodeURIComponent(vid.full)}`;
     const respText = await page.evaluate(async (body) => {
       try {
@@ -101,47 +114,59 @@ app.get('/views', async (req, res) => {
       }
     }, payload);
 
-    // Декодируем текст с использованием iconv-lite, чтобы избежать ошибок при парсинге
-    let decodedRespText = iconv.decode(Buffer.from(respText, 'utf-8'), 'utf-8');
+    if (!respText || respText.startsWith('FETCH_ERR::')) {
+      console.error('Ошибка при fetch al_video.php:', respText);
+      await page.close();
+      return res.status(500).json({ error: 'fetch al_video.php failed' });
+    }
 
-    // Теперь ищем объект "videoModalInfoData"
-    let videoModalInfoData = null;
-    if (decodedRespText && !decodedRespText.startsWith('FETCH_ERR::')) {
-      // Находим JSON-строку с объектом videoModalInfoData
-      const m = decodedRespText.match(/"videoModalInfoData":\s*({[^}]*})/);
-      if (m) {
-        let videoModalInfoDataText = m[1];
-        
-        // Очищаем текст от лишних символов, чтобы избежать ошибок при парсинге
-        videoModalInfoDataText = videoModalInfoDataText.replace(/\u200B/g, ''); // Убираем невидимые символы
-        videoModalInfoDataText = videoModalInfoDataText.replace(/[\n\r\t]+/g, ''); // Убираем лишние пробелы и символы
+    // ----------- ИЩЕМ ИМЕННО videoModalInfoData -----------
+    let views = null;
 
-        try {
-          // Преобразуем строку в объект
-          videoModalInfoData = JSON.parse(videoModalInfoDataText);
-          console.log('videoModalInfoData:', videoModalInfoData); // Логируем содержимое videoModalInfoData
-        } catch (e) {
-          console.error('Ошибка при парсинге JSON:', e);
-          console.log('Текст, который не удалось распарсить:', videoModalInfoDataText); // Логируем проблемный текст
+    const idx = respText.indexOf('"videoModalInfoData"');
+    if (idx !== -1) {
+      const objText = extractObjectFromText(respText, idx);
+      if (objText) {
+        // Для отладки логируем только маленький кусочек
+        console.log('videoModalInfoData (фрагмент):', objText.slice(0, 500));
+
+        const m = objText.match(/"views"\s*:\s*(\d{1,15})/);
+        if (m) {
+          views = Number(m[1]);
+          console.log('Найден views в videoModalInfoData:', views);
+        } else {
+          console.log('Внутри videoModalInfoData не найдено поля "views"');
         }
+      } else {
+        console.log('Не удалось вырезать объект videoModalInfoData фигурными скобками');
+      }
+    } else {
+      console.log('Строка "videoModalInfoData" не найдена в ответе al_video.php');
+    }
+
+    // (опционально) запасной вариант — вообще отключим, если хочешь
+    // чтобы брать ТОЛЬКО из videoModalInfoData, просто не добавляй этот fallback
+    if (views == null) {
+      console.log('Пробуем fallback-парсинг views по всему тексту (может попасться чужой объект!)');
+      const m = respText.match(/"videoModalInfoData"\s*:\s*\{[^}]*"views"\s*:\s*(\d{1,15})/);
+      if (m) {
+        views = Number(m[1]);
+        console.log('Fallback нашёл views:', views);
       }
     }
 
-    // Если нашли videoModalInfoData, пытаемся извлечь просмотры
-    let views = null;
-    if (videoModalInfoData && videoModalInfoData.views) {
-      views = videoModalInfoData.views;
-    }
+    await page.close();
 
     if (Number.isFinite(views)) {
       return res.json({ views, source: 'videoModalInfoData' });
     } else {
       return res.status(404).json({ error: 'views not found', id: vid.full });
     }
+
   } catch (e) {
     console.error('Scraper error:', e);
     return res.status(500).json({ error: String(e) });
   }
 });
 
-app.listen(PORT, () => console.log(`VK scraper running on ${PORT}`)); //hellotest
+app.listen(PORT, () => console.log(`VK scraper running on ${PORT}`));
