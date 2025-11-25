@@ -112,7 +112,7 @@ app.get('/views', async (req, res) => {
     if (respText && !respText.startsWith('FETCH_ERR::')) {
       let m = respText.match(/views_count["']?\s*[:=]\s*["']?(\d+)/i);
       if (!m) m = respText.match(/"views"\s*:\s*\{\s*"count"\s*:\s*(\d{1,15})/);
-
+      if (!m) m = respText.match(/"views"\s*:\s*(\d{1,15})/);
     }
 
     // запасной вариант: пробуем выдернуть из DOM/HTML
