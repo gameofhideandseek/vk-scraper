@@ -107,23 +107,21 @@ app.get('/views', async (req, res) => {
     // логируем ответ от al_video.php для отладки
     console.log("Ответ от al_video.php:", respText);
 
-    // извлекаем количество просмотров из тегов <a> с классом group_link
+    // ищем второй параметр (182734) в теге <a> с классом "group_link"
     let views = null;
     if (respText && !respText.startsWith('FETCH_ERR::')) {
-      const links = await page.$$eval('a.group_link[target="_blank"]', (anchors) => {
-        return anchors.map(anchor => anchor.innerText);
-      });
-
-      console.log('Все ссылки group_link:', links); // Логируем все ссылки с классом group_link
-
-      // Пытаемся найти нужные значения просмотров
-      for (let link of links) {
-        const match = link.match(/(\d+),\s*(\d+)/);
-        if (match) {
-          views = parseInt(match[2], 10);
-          break;
+      views = await page.evaluate(() => {
+        // Ищем все ссылки <a> с классом "group_link" и извлекаем второй параметр
+        const links = Array.from(document.querySelectorAll('a.group_link[target="_blank"]'));
+        for (let link of links) {
+          const textContent = link.innerText;
+          const matches = textContent.match(/(\d+),\s*(\d+)/);
+          if (matches && matches.length > 2) {
+            return parseInt(matches[2], 10);
+          }
         }
-      }
+        return null; // Возвращаем null, если не нашли
+      });
     }
 
     await page.close();
