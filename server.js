@@ -94,40 +94,30 @@ app.get('/views', async (req, res) => {
           body
         });
         const text = await r.text();
-        
-        // Принудительно декодируем текст в UTF-8, если ответ не в правильной кодировке
-        const decoder = new TextDecoder('utf-8');
-        const decodedResponse = decoder.decode(new TextEncoder().encode(text));
-        return decodedResponse;
+        return text;
       } catch (e) {
         return 'FETCH_ERR::' + String(e);
       }
     }, payload);
 
-    // логируем ответ от al_video.php для отладки
-    console.log("Ответ от al_video.php:", respText);
-
-    // ищем второй параметр (182734) в теге <a> с классом "group_link"
-    let views = null;
+    // Теперь ищем объект "videoModalInfoData"
+    let videoModalInfoData = null;
     if (respText && !respText.startsWith('FETCH_ERR::')) {
-      views = await page.evaluate(() => {
-        // Ищем все ссылки <a> с классом "group_link" и извлекаем второй параметр
-        const links = Array.from(document.querySelectorAll('a.group_link[target="_blank"]'));
-        for (let link of links) {
-          const textContent = link.innerText;
-          const matches = textContent.match(/(\d+),\s*(\d+)/);
-          if (matches && matches.length > 2) {
-            return parseInt(matches[2], 10);
-          }
-        }
-        return null; // Возвращаем null, если не нашли
-      });
+      const m = respText.match(/"videoModalInfoData":\s*({[^}]*})/);
+      if (m) {
+        videoModalInfoData = JSON.parse(m[1]); // Преобразуем строку в объект
+        console.log('videoModalInfoData:', videoModalInfoData); // Логируем содержимое videoModalInfoData
+      }
     }
 
-    await page.close();
+    // Если нашли videoModalInfoData, пытаемся извлечь просмотры
+    let views = null;
+    if (videoModalInfoData && videoModalInfoData.views) {
+      views = videoModalInfoData.views;
+    }
 
     if (Number.isFinite(views)) {
-      return res.json({ views, source: 'group_link' });
+      return res.json({ views, source: 'videoModalInfoData' });
     } else {
       return res.status(404).json({ error: 'views not found', id: vid.full });
     }
