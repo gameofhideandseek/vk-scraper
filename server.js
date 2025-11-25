@@ -45,46 +45,6 @@ async function ensureBrowser() {
   return browser;
 }
 
-// Функция для получения просмотров через al_video.php
-async function fetchViewsFromAlVideo(videoId) {
-  const url = `https://vk.com/al_video.php?act=show&al=1&video=${encodeURIComponent(videoId)}`;
-  const page = await browser.newPage();
-
-  // Установим куки, если они необходимы для авторизации
-  if (REMIXSID) {
-    await page.setCookie(
-      { name: 'remixsid', value: REMIXSID, domain: '.vk.com', httpOnly: true, secure: true },
-      { name: 'remixsid', value: REMIXSID, domain: '.m.vk.com', httpOnly: true, secure: true }
-    );
-  }
-
-  // Маскируемся под обычный браузер
-  await page.setUserAgent(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36'
-  );
-  await page.setExtraHTTPHeaders({ 'Accept-Language': 'ru-RU,ru;q=0.9' });
-
-  try {
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-
-    // Извлекаем количество просмотров из страницы
-    const views = await page.evaluate(() => {
-      const viewsElement = document.querySelector('.views_count');
-      if (viewsElement) {
-        const viewsText = viewsElement.textContent || viewsElement.innerText;
-        return parseInt(viewsText.replace(/\D/g, ''), 10); // Убираем все нецифровые символы
-      }
-      return null;
-    });
-
-    await page.close();
-    return views;
-  } catch (e) {
-    console.error('Ошибка при получении просмотров через al_video.php:', e);
-    await page.close();
-    return null;
-  }
-}
 
 app.get('/views', async (req, res) => {
   const raw = req.query.url;
@@ -93,12 +53,74 @@ app.get('/views', async (req, res) => {
 
   try {
     await ensureBrowser();
+    const page = await browser.newPage();
 
-    // Получаем количество просмотров через al_video.php
-    const views = await fetchViewsFromAlVideo(vid.full);
+    // кука VK (если нужна авторизация)
+    if (REMIXSID) {
+      await page.setCookie(
+        { name: 'remixsid', value: REMIXSID, domain: '.vk.com', httpOnly: true, secure: true },
+        { name: 'remixsid', value: REMIXSID, domain: '.m.vk.com', httpOnly: true, secure: true }
+      );
+    }
 
-    if (views !== null && Number.isFinite(views)) {
-      return res.json({ views, source: 'al_video.php' });
+    // немного маскируемся под обычный браузер
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36'
+    );
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'ru-RU,ru;q=0.9' });
+
+    // идем на vk.com, чтобы сессия закрепилась
+    await page.goto('https://vk.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+    // главный способ: вызвать внутренний API al_video.php из самой страницы
+    const payload = `act=show&al=1&video=${encodeURIComponent(vid.full)}`;
+    const respText = await page.evaluate(async (body) => {
+      try {
+        const r = await fetch('https://vk.com/al_video.php', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': '*/*',
+            'Origin': 'https://vk.com',
+            'Referer': 'https://vk.com/'
+          },
+          body
+        });
+        return await r.text();
+      } catch (e) {
+        return 'FETCH_ERR::' + String(e);
+      }
+    }, payload);
+
+    // пытаемся достать просмотры из ответа al_video.php
+    let views = null;
+    if (respText && !respText.startsWith('FETCH_ERR::')) {
+      let m = respText.match(/views_count["']?\s*[:=]\s*["']?(\d+)/i);
+      if (!m) m = respText.match(/"views"\s*:\s*\{\s*"count"\s*:\s*(\d{1,15})/);
+      if (!m) m = respText.match(/"views"\s*:\s*(\d{1,15})/);
+      if (m) views = Number(m[1]);
+    }
+
+    // запасной вариант: пробуем выдернуть из DOM/HTML
+    if (views == null) {
+      const deskUrl = `https://vk.com/video${vid.owner}_${vid.id}`;
+      await page.goto(deskUrl, { waitUntil: 'networkidle2', timeout: 45000 });
+      const txt = await page.evaluate(() => document.body?.innerText || '');
+      const m = txt.replace(/\u00A0/g, ' ').match(/([\d\s]+)\s*просмотр/iu);
+      if (m) views = Number(m[1].replace(/[^\d]/g, ''));
+      if (!views) {
+        const html = await page.content();
+        const j = html.match(/"viewsCount"\s*:\s*(\d{1,15})/);
+        if (j) views = Number(j[1]);
+      }
+    }
+
+    await page.close();
+
+    if (Number.isFinite(views)) {
+      return res.json({ views, source: 'al_video.php|dom' });
     } else {
       return res.status(404).json({ error: 'views not found', id: vid.full });
     }
@@ -108,4 +130,4 @@ app.get('/views', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`VK scraper running on ${PORT}`));
+app.listen(PORT, () => console.log(`VK scraper running on ${PORT}`)); //hellotest
