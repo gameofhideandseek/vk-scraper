@@ -130,4 +130,4 @@ app.get('/views', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`VK scraper running on ${PORT}`));
+app.listen(PORT, () => console.log(`VK scraper running on ${PORT}`)); //hellotest
