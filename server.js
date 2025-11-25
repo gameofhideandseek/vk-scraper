@@ -107,37 +107,21 @@ app.get('/views', async (req, res) => {
     // логируем ответ от al_video.php для отладки
     console.log("Ответ от al_video.php:", respText);
 
-    // извлекаем объект videoModalInfoData из текста
-    let videoModalInfoData = null;
-    if (respText && !respText.startsWith('FETCH_ERR::')) {
-      // Ищем объект videoModalInfoData
-      const dataMatch = respText.match(/videoModalInfoData\s*=\s*(\{.*?\});/s);
-      if (dataMatch) {
-        try {
-          videoModalInfoData = JSON.parse(dataMatch[1]);
-          console.log('videoModalInfoData:', videoModalInfoData); // Логируем данные объекта videoModalInfoData
-        } catch (error) {
-          console.error('Ошибка при парсинге JSON:', error);
-        }
-      } else {
-        console.error('Не удалось найти videoModalInfoData в ответе');
-      }
-    }
-
-    // если нашли videoModalInfoData, проверяем на наличие данных views
+    // извлекаем количество просмотров из тегов <a> с классом group_link
     let views = null;
-    if (videoModalInfoData && videoModalInfoData.views) {
-      views = videoModalInfoData.views;
-    }
+    if (respText && !respText.startsWith('FETCH_ERR::')) {
+      const links = await page.$$eval('a.group_link[target="_blank"]', (anchors) => {
+        return anchors.map(anchor => anchor.innerText);
+      });
 
-    // если views не найдено, проверяем другие источники, такие как short_video_other_videos
-    if (views == null) {
-      const otherVideos = videoModalInfoData?.short_video_other_videos;
-      if (otherVideos) {
-        // ищем нужное видео среди других видео в плейлисте
-        const video = otherVideos.find((v) => v.id === vid.id);
-        if (video) {
-          views = video.views;
+      console.log('Все ссылки group_link:', links); // Логируем все ссылки с классом group_link
+
+      // Пытаемся найти нужные значения просмотров
+      for (let link of links) {
+        const match = link.match(/(\d+),\s*(\d+)/);
+        if (match) {
+          views = parseInt(match[2], 10);
+          break;
         }
       }
     }
@@ -145,7 +129,7 @@ app.get('/views', async (req, res) => {
     await page.close();
 
     if (Number.isFinite(views)) {
-      return res.json({ views, source: 'videoModalInfoData' });
+      return res.json({ views, source: 'group_link' });
     } else {
       return res.status(404).json({ error: 'views not found', id: vid.full });
     }
